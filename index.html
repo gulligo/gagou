@@ -2,6 +2,9 @@
 <html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>걷기 기록</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#22c55e">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
 *{box-sizing:border-box}
@@ -254,4 +257,5 @@ function tab(t){
 function render(){list();stats()}
 $('#fu').value=F.url||'';$('#fc').value=F.code||'';$('#fn').value=F.name||'';
 render();info([]);
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');
 </script></body></html>
