@@ -1,7 +1,8 @@
 {
+  "id": "/gagou/walk2",
   "name": "가고우",
   "short_name": "가고우",
-  "start_url": "./index.html",
+  "start_url": "./index.html?app=2",
   "scope": "./",
   "display": "standalone",
   "background_color": "#ffffff",
