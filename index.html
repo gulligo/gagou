@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>걷기 기록</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.45 -apple-system,"Noto Sans KR",sans-serif;background:#f1f5f4;color:#1d2b2a;padding-bottom:60px}
+.v{display:none;padding:10px}.v.on{display:block}#v-map{padding:0}
+#map{height:52vh}#info{padding:8px 10px}
+.g{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
+.g>div,.card{background:#fff;border-radius:10px;padding:9px}
+.g b{display:block;font-size:18px}.card{margin-bottom:10px}
+button,.btn{background:#0f766e;color:#fff;border:0;border-radius:8px;padding:8px 12px;font-size:14px;display:inline-block;margin:2px}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#fff;border-top:1px solid #d5dedc;z-index:5}
+nav button{flex:1;background:none;color:#7b8c8a;border-radius:0;padding:15px 0;margin:0}
+nav .on{color:#0f766e;font-weight:700}
+.it{display:flex;gap:6px;align-items:center;background:#fff;border-radius:8px;padding:8px;margin-bottom:6px}
+.it span{flex:1}.it button{padding:4px 8px;background:#8a9a98}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);text-align:center;gap:2px}
+.cal i{font-style:normal;color:#7b8c8a;font-size:12px}
+.d{position:relative;padding:10px 0;font-size:15px}
+.d u{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:36px;color:rgba(255,120,160,.38);text-decoration:none;pointer-events:none}
+.bars{flex:1;display:flex;align-items:flex-end;height:120px;gap:1px;border-bottom:1px solid #b9c6c4;background:linear-gradient(#e3eae9,#e3eae9) 0 0/100% 1px no-repeat,linear-gradient(#e3eae9,#e3eae9) 0 50%/100% 1px no-repeat}
+.ya{display:flex;flex-direction:column;justify-content:space-between;height:120px;width:28px;padding-right:4px;text-align:right;font-size:11px;color:#7b8c8a}
+.xl{display:flex;margin-left:28px;font-size:11px;color:#7b8c8a}.xl span{flex:1;text-align:center;white-space:nowrap}
+.tb{display:flex;gap:4px;margin-bottom:6px}.tb button{flex:1;margin:0}.tb .off{background:#e3eae9;color:#5b6b69}
+.mh{display:flex;justify-content:space-between;align-items:baseline;padding:8px 2px 4px}
+.ms{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #eef3f2}.it svg{flex:none}
+.bars div{flex:1;border-radius:2px 2px 0 0;min-height:2px}
+input:not([type=checkbox]){width:100%;padding:8px;margin:3px 0;border:1px solid #c5d0ce;border-radius:8px;font-size:14px}
+#fx{position:fixed;inset:0;z-index:99;pointer-events:none;display:none}
+#msg{position:fixed;left:50%;top:42%;transform:translate(-50%,-50%);z-index:100;background:rgba(0,0,0,.78);color:#fff;font-size:20px;font-weight:700;padding:18px 22px;border-radius:14px;text-align:center;display:none;width:80%}
+</style></head><body>
+
+<div class="v on" id="v-map">
+ <div id="map"></div>
+ <div style="padding:8px 10px 0">
+  <label class="btn">GPX 불러오기<input type="file" id="f" multiple hidden></label>
+  <div style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:4px">1km/h
+   <div style="flex:1;height:8px;border-radius:4px;background:linear-gradient(90deg,hsl(60,100%,48%),hsl(0,100%,48%))"></div>6km/h 이상</div>
+ </div>
+ <div id="info"></div>
+</div>
+
+<div class="v" id="v-rec">
+ <button onclick="ov()">선택한 경로 겹쳐보기</button>
+ <button onclick="bak()">백업 저장</button>
+ <label class="btn">백업 복원<input type="file" id="rf" hidden></label>
+ <div class="card" id="tot" style="margin-top:8px"></div>
+ <div id="list"></div>
+</div>
+
+<div class="v" id="v-st"><div id="st"></div></div>
+
+<div class="v" id="v-fam">
+ <div class="card"><b>가족 공유 설정</b>
+  <input id="fu" placeholder="Firebase 데이터베이스 주소 (https://...firebasedatabase.app)">
+  <input id="fc" placeholder="가족 코드 (가족끼리 같은 코드)">
+  <input id="fn" placeholder="내 이름 (한글/영문/숫자)">
+  <button onclick="fs()">저장</button>
+  <button onclick="up(R).then(fam)">내 기록 모두 올리기</button>
+ </div>
+ <div id="famout"></div>
+</div>
+
+<nav>
+ <button data-t="map" class="on" onclick="tab('map')">지도</button>
+ <button data-t="rec" onclick="tab('rec')">기록</button>
+ <button data-t="st" onclick="tab('st')">통계</button>
+ <button data-t="fam" onclick="tab('fam')">가족</button>
+</nav>
+<canvas id="fx"></canvas><div id="msg"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const $=s=>document.querySelector(s),LS=localStorage;
+// 성공 멘트: 여기 문구를 자유롭게 바꾸세요
+const MSG=['오늘 목표 달성! 정말 멋져요 🎉','해냈어요! 오늘도 한 걸음 더 🚶','목표 완료! 꾸준함이 최고예요 👏'];
+let R=JSON.parse(LS.wt||'[]'),G=+LS.goal||3,F=JSON.parse(LS.fam||'{}'),FD={},sel=new Set();
+let M=new Date();M=new Date(M.getFullYear(),M.getMonth(),1);
+const save=()=>{LS.wt=JSON.stringify(R)};
+const pad=n=>String(n).padStart(2,'0');
+const ymd=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const hm=s=>{const h=Math.floor(s/3600),m=Math.floor(s%3600/60);return(h?h+'시간 ':'')+m+'분'};
+const spd=r=>r.dur?(r.dist/r.dur*3600).toFixed(1):'0.0';
+const dayKm=d=>R.filter(r=>r.date==d).reduce((s,r)=>s+r.dist,0);
+const hv=(a,b)=>{const r=Math.PI/180,x=(b[0]-a[0])*r,y=(b[1]-a[1])*r,h=Math.sin(x/2)**2+Math.cos(a[0]*r)*Math.cos(b[0]*r)*Math.sin(y/2)**2;return 12742*Math.asin(Math.sqrt(h))};
+const col=v=>`hsl(${60-60*Math.min(1,Math.max(0,(v-1)/5))},100%,48%)`;
+
+/* 지도: 일반(OSM) + 위성(Esri) 전환 */
+let map=null,lg=null;
+try{
+ map=L.map('map').setView([36.5,127.8],7);
+ const osm=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+ const sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Esri'});
+ L.control.layers({'지도':osm,'위성':sat}).addTo(map);
+ lg=L.layerGroup().addTo(map);
+}catch(e){map=null;$('#map').innerHTML='<p style="padding:20px">지도를 불러오지 못했어요. 인터넷 연결을 확인하세요.</p>'}
+
+function draw(rs){
+ if(!map){info(rs);return}
+ lg.clearLayers();const b=[];
+ rs.forEach(r=>{const p=r.pts;
+  for(let i=1;i<p.length;i++){
+   const dt=(p[i][2]-p[i-1][2])/3600,v=dt>0?hv(p[i-1],p[i])/dt:3;
+   L.polyline([[p[i-1][0],p[i-1][1]],[p[i][0],p[i][1]]],{color:col(v),weight:5}).addTo(lg)}
+  p.forEach(x=>b.push([x[0],x[1]]))});
+ if(b.length)map.fitBounds(b,{padding:[20,20]});
+ info(rs)}
+function info(rs){
+ const d=rs.reduce((s,r)=>s+r.dist,0),t=rs.reduce((s,r)=>s+r.dur,0),e=rs.reduce((s,r)=>s+r.ele,0);
+ $('#info').innerHTML=rs.length?`<b>${rs.length>1?rs.length+'개 경로':rs[0].date}</b>
+ <div class="g"><div>거리<b>${d.toFixed(2)} km</b></div><div>시간<b>${hm(t)}</b></div>
+ <div>평균 속도<b>${t?(d/t*3600).toFixed(1):'0.0'} km/h</b></div><div>고도 상승<b>${Math.round(e)} m</b></div></div>`:'GPX 파일을 불러오세요'}
+
+/* GPX 읽기 */
+function parse(txt){
+ const x=new DOMParser().parseFromString(txt,'text/xml');
+ const P=[...x.querySelectorAll('trkpt')].map(n=>[+n.getAttribute('lat'),+n.getAttribute('lon'),Date.parse(n.querySelector('time')?.textContent)/1000||0,+n.querySelector('ele')?.textContent||0]);
+ if(P.length<2)return null;
+ let dist=0,dur=0,ele=0,ref=P[0][3];
+ for(let i=1;i<P.length;i++){
+  dist+=hv(P[i-1],P[i]);
+  const dt=P[i][2]-P[i-1][2];if(dt>0&&dt<=120)dur+=dt; // 2분 넘는 정지 구간 제외
+  const e=P[i][3];if(e-ref>=3){ele+=e-ref;ref=e}else if(e<ref)ref=e}
+ const k=Math.ceil(P.length/700);
+ const pts=P.filter((_,i)=>i%k==0||i==P.length-1).map(p=>[+p[0].toFixed(5),+p[1].toFixed(5),p[2],Math.round(p[3])]);
+ const ts=P[0][2]||Math.floor(Date.now()/1000);
+ return{id:ts+'_'+Math.round(dist*100),ts,date:ymd(new Date(ts*1000)),dist,dur,ele,note:'',pts}}
+
+$('#f').onchange=async e=>{
+ const fs=[...e.target.files],before={},add=[];
+ for(const f of fs){
+  const r=parse(await f.text());
+  if(!r||R.some(x=>x.id==r.id)||add.some(x=>x.id==r.id))continue;
+  before[r.date]??=dayKm(r.date);R.push(r);add.push(r)}
+ e.target.value='';
+ if(!add.length){alert('새로 추가된 기록이 없어요 (중복이거나 GPX 형식이 아니에요)');return}
+ save();render();draw(add);up(add);
+ if(Object.keys(before).some(d=>before[d]<G&&dayKm(d)>=G))boom()};
+
+/* 기록 목록 */
+function thumb(r){
+ const p=r.pts,la=p.map(x=>x[0]),lo=p.map(x=>x[1]),a=Math.min(...la),b=Math.max(...la),c=Math.min(...lo),d=Math.max(...lo),k=Math.cos(a*Math.PI/180),z=Math.max(b-a,(d-c)*k)||1e-4,q=Math.ceil(p.length/60);
+ const pt=p.filter((_,i)=>i%q==0).map(x=>`${((x[1]-c)*k/z*48+4).toFixed(1)},${((b-x[0])/z*48+4).toFixed(1)}`).join(' ');
+ return`<svg width="56" height="56" style="background:#eef3f2;border-radius:8px"><polyline points="${pt}" fill="none" stroke="#ff4a2a" stroke-width="2" stroke-linejoin="round"/></svg>`}
+function list(){
+ $('#tot').innerHTML=`누적 거리<br><b style="font-size:28px">${sum(R).toFixed(2)}</b> km`;
+ const g={};[...R].sort((a,b)=>b.ts-a.ts).forEach(r=>(g[r.date.slice(0,7)]??=[]).push(r));
+ $('#list').innerHTML=Object.entries(g).map(([k,a])=>`<div class="mh"><b>${k.replace('-','/')}</b><small>${sum(a).toFixed(1)} km · ${hm(a.reduce((s,r)=>s+r.dur,0))} · ${a.length}회</small></div>`
+ +a.map(r=>`<div class="it"><input type="checkbox" data-i="${r.id}" ${sel.has(r.id)?'checked':''}>${thumb(r)}
+ <span onclick="show('${r.id}')"><small>${r.date}</small><br><b style="font-size:16px">${r.dist.toFixed(2)}</b> km · ${hms(r.dur)} · ${spd(r)} km/h<br><small>${r.note||''}</small></span>
+ <button onclick="note('${r.id}')">메모</button><button onclick="del('${r.id}')">삭제</button></div>`).join('')).join('')||'기록이 없어요'}
+$('#list').onchange=e=>{const i=e.target.dataset.i;e.target.checked?sel.add(i):sel.delete(i)};
+const show=id=>{draw([R.find(r=>r.id==id)]);tab('map')};
+const ov=()=>{const rs=R.filter(r=>sel.has(r.id));if(rs.length){draw(rs);tab('map')}else alert('겹쳐볼 기록을 체크하세요')};
+function note(id){const r=R.find(x=>x.id==id),n=prompt('메모',r.note||'');if(n!=null){r.note=n;save();list();up([r])}}
+function del(id){if(!confirm('이 기록을 삭제할까요?'))return;R=R.filter(r=>r.id!=id);sel.delete(id);save();render();rm(id)}
+
+/* 통계: 기간 탭 그래프, 통계 카드, 이정표, 달력 */
+let P='월',wo=0;
+const sum=a=>a.reduce((s,r)=>s+r.dist,0),hms=s=>`${pad(Math.floor(s/3600))}:${pad(Math.floor(s%3600/60))}:${pad(Math.floor(s%60))}`;
+const mv=d=>{M=new Date(M.getFullYear(),M.getMonth()+d,1);stats()};
+const nv=d=>{if(P=='주간'){wo+=d;stats()}else mv(P=='년'?d*12:d)};
+const sp=p=>{P=p;stats()};
+const dayShow=d=>{const rs=R.filter(r=>r.date==d);if(rs.length){draw(rs);tab('map')}};
+function ser(){
+ const y=M.getFullYear(),m=M.getMonth(),mk=`${y}-${pad(m+1)}`;
+ if(P=='주간'){const t=new Date(),s0=new Date(t.getFullYear(),t.getMonth(),t.getDate()-(t.getDay()+6)%7+wo*7),ds=[...Array(7)].map((_,i)=>ymd(new Date(s0.getFullYear(),s0.getMonth(),s0.getDate()+i)));
+  return{t:`${ds[0].slice(5)} ~ ${ds[6].slice(5)}`,L:[...'월화수목금토일'],V:ds.map(dayKm),day:1,f:r=>r.date>=ds[0]&&r.date<=ds[6]}}
+ if(P=='월'){const n=new Date(y,m+1,0).getDate();
+  return{t:`${y}/${pad(m+1)}`,L:[...Array(n)].map((_,i)=>i+1),V:[...Array(n)].map((_,i)=>dayKm(`${mk}-${pad(i+1)}`)),day:1,f:r=>r.date.startsWith(mk)}}
+ if(P=='년')return{t:y+'년',L:[...Array(12)].map((_,i)=>i+1),V:[...Array(12)].map((_,i)=>sum(R.filter(r=>r.date.startsWith(`${y}-${pad(i+1)}`)))),f:r=>r.date.startsWith(''+y)}
+ const ys=[...new Set(R.map(r=>r.date.slice(0,4)))].sort();
+ return{t:'전체',L:ys,V:ys.map(a=>sum(R.filter(r=>r.date.startsWith(a)))),f:()=>true}}
+function stats(){
+ const S0=ser(),rs=R.filter(S0.f),d=sum(rs),t=rs.reduce((s,r)=>s+r.dur,0),e=rs.reduce((s,r)=>s+r.ele,0);
+ const raw=Math.max(G,...S0.V),st=raw>20?10:raw>5?5:1,top=Math.max(st,Math.ceil(raw/st)*st);
+ const y=M.getFullYear(),m=M.getMonth(),n=new Date(y,m+1,0).getDate(),f0=new Date(y,m,1).getDay(),dk=i=>`${y}-${pad(m+1)}-${pad(i)}`;
+ const S=new Set(R.map(r=>r.date));let cur=0,dd=new Date();
+ if(!S.has(ymd(dd)))dd.setDate(dd.getDate()-1);
+ while(S.has(ymd(dd))){cur++;dd.setDate(dd.getDate()-1)}
+ let best=0,run=0;[...S].sort().forEach((s,i,a)=>{run=i&&(new Date(s)-new Date(a[i-1]))/864e5==1?run+1:1;best=Math.max(best,run)});
+ const L1=R.reduce((a,r)=>!a||r.dist>a.dist?r:a,null);
+ const F1=R.filter(r=>r.dur>0).reduce((a,r)=>!a||r.dist/r.dur>a.dist/a.dur?r:a,null);
+ $('#st').innerHTML=`<div class="card"><div class="tb">${['주간','월','년','전체'].map(p=>`<button class="${p==P?'':'off'}" onclick="sp('${p}')">${p}</button>`).join('')}</div>
+ ${P=='전체'?'':`<div style="display:flex;justify-content:space-between;align-items:center"><button onclick="nv(-1)">◀</button><b>${S0.t}</b><button onclick="nv(1)">▶</button></div>`}
+ <div style="display:flex;margin-top:8px"><div class="ya"><span>${top}</span><span>${top/2}</span><span>0</span></div>
+ <div class="bars">${S0.V.map(k=>`<div style="height:${k/top*100}%;background:${!k?'#d5dedc':!S0.day?'#0f766e':k>=G?'#2563eb':'#ef4444'}"></div>`).join('')}</div></div>
+ <div class="xl">${S0.L.map((l,i)=>`<span>${S0.L.length>12&&i&&(i+1)%5?'':l}</span>`).join('')}</div>
+ <small>일 목표 <input type="number" step="0.5" value="${G}" style="width:70px;display:inline" onchange="G=+this.value||3;LS.goal=G;stats()"> km ${S0.day?'(파랑: 달성, 빨강: 미달)':''}</small></div>
+ <div class="mh"><b>${P} 통계</b></div>
+ <div class="g"><div>총 거리<b>${d.toFixed(2)} km</b></div><div>총 시간<b>${hms(t)}</b></div><div>걷기 횟수<b>${rs.length}회</b></div>
+ <div>누적 상승<b>${Math.round(e)} m</b></div><div>평균 속도<b>${t?(d/t*3600).toFixed(1):'0.0'} km/h</b></div>
+ <div>연속 기록<b>${cur}일</b><small>(최장 ${best}일)</small></div></div>
+ <div class="mh"><b>최고 기록</b></div>
+ <div class="g"><div>최장 거리<b>${L1?L1.dist.toFixed(2):0} km</b><small>(${L1?hm(L1.dur):'-'})</small></div><div>최고 평균 속도<b>${F1?spd(F1):'0.0'} km/h</b></div></div>
+ <div class="mh"><b>이정표</b></div>
+ <div class="card">${[3,5,10].map(x=>`<div class="ms"><span>${x}KM 이상 걸은 횟수</span><b>${rs.filter(r=>r.dist>=x).length}</b></div>`).join('')}</div>
+ <div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><button onclick="mv(-1)">◀</button><b>${y}년 ${m+1}월</b><button onclick="mv(1)">▶</button></div>
+ <div class="cal">${[...'일월화수목금토'].map(x=>`<i>${x}</i>`).join('')}${'<div></div>'.repeat(f0)}${[...Array(n)].map((_,i)=>`<div class="d" onclick="dayShow('${dk(i+1)}')">${dayKm(dk(i+1))?'<u>♥</u>':''}${i+1}</div>`).join('')}</div></div>`}
+
+/* 폭죽 + 성공 멘트 */
+function boom(){
+ const c=$('#fx'),x=c.getContext('2d'),mg=$('#msg');
+ c.width=innerWidth;c.height=innerHeight;c.style.display='block';
+ mg.textContent=MSG[Math.random()*MSG.length|0];mg.style.display='block';
+ let P=[],T=0;
+ const burst=()=>{const X=innerWidth*(.2+Math.random()*.6),Y=innerHeight*(.15+Math.random()*.35),h=Math.random()*360;
+  for(let i=0;i<50;i++){const a=Math.PI*2*i/50,s=2+Math.random()*3;P.push({x:X,y:Y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,l:60,h})}};
+ const f=()=>{x.clearRect(0,0,c.width,c.height);
+  if(T%25==0&&T<100)burst();
+  P.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.05;p.l--;x.fillStyle=`hsla(${p.h},100%,60%,${p.l/60})`;x.fillRect(p.x,p.y,3,3)});
+  P=P.filter(p=>p.l>0);
+  if(++T<230)requestAnimationFrame(f);else{c.style.display='none';mg.style.display='none'}};
+ f()}
+
+/* 백업 / 복원 */
+function bak(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({R,G})]));a.download='walk-backup.json';a.click()}
+$('#rf').onchange=async e=>{
+ try{const d=JSON.parse(await e.target.files[0].text()),ids=new Set(R.map(r=>r.id));
+  d.R.forEach(r=>ids.has(r.id)||R.push(r));if(d.G){G=d.G;LS.goal=G}
+  save();render();alert('복원했어요')}catch(x){alert('복원 실패: 백업 파일을 확인하세요')}
+ e.target.value=''};
+
+/* 가족 공유 (Firebase Realtime Database REST) */
+const base=()=>F.url&&F.code&&F.name?`${F.url.replace(/\/$/,'')}/walk/${encodeURIComponent(F.code)}`:null;
+async function up(rs){const b=base();if(!b)return;const o={};rs.forEach(r=>o[r.id]=r);
+ try{await fetch(`${b}/${F.name}.json`,{method:'PATCH',body:JSON.stringify(o)})}catch(e){}}
+async function rm(id){const b=base();if(!b)return;try{await fetch(`${b}/${F.name}/${id}.json`,{method:'DELETE'})}catch(e){}}
+function fs(){
+ F={url:$('#fu').value.trim(),code:$('#fc').value.trim(),name:$('#fn').value.replace(/[^0-9A-Za-z가-힣]/g,'')};
+ LS.fam=JSON.stringify(F);$('#fn').value=F.name;fam()}
+async function fam(){
+ const b=base(),o=$('#famout');
+ if(!b){o.textContent='위 설정을 입력하고 저장하세요';return}
+ o.textContent='불러오는 중…';
+ try{
+  FD=await(await fetch(b+'.json')).json()||{};const td=ymd(new Date());
+  o.innerHTML=Object.entries(FD).map(([nm,rs])=>{
+   const a=Object.values(rs).sort((x,y)=>y.ts-x.ts),k=a.filter(r=>r.date==td).reduce((s,r)=>s+r.dist,0);
+   return`<div class="card"><b>${nm}</b> · 오늘 <b>${k.toFixed(2)} km</b>${k>=G?' ✅':''}
+   ${a.slice(0,10).map(r=>`<div class="it" onclick="fshow('${nm}','${r.id}')"><span>${r.date} ${r.dist.toFixed(2)}km · ${hm(r.dur)} · ${spd(r)}km/h</span></div>`).join('')}</div>`}).join('')||'공유된 기록이 없어요'
+ }catch(e){o.textContent='불러오기 실패: 데이터베이스 주소와 규칙을 확인하세요'}}
+function fshow(nm,id){const r=Object.values(FD[nm]).find(x=>x.id==id);if(r){r.pts=Object.values(r.pts);draw([r]);tab('map')}}
+
+/* 탭 */
+function tab(t){
+ document.querySelectorAll('.v').forEach(v=>v.classList.toggle('on',v.id=='v-'+t));
+ document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t==t));
+ if(t=='map'&&map)setTimeout(()=>map.invalidateSize(),50);
+ if(t=='fam')fam()}
+function render(){list();stats()}
+$('#fu').value=F.url||'';$('#fc').value=F.code||'';$('#fn').value=F.name||'';
+render();info([]);
+</script></body></html>
