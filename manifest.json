@@ -1,13 +1,14 @@
 {
-  "name": "가고우 (Gagou)",
+  "name": "가고우",
   "short_name": "가고우",
-  "start_url": "./index.html",
+  "start_url": "/gagou/index.html",
+  "scope": "/gagou/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#22c55e",
   "icons": [
     {
-      "src": "./icon.png",
+      "src": "/gagou/icon.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
