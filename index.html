@@ -36,9 +36,11 @@ input:not([type=checkbox]){width:100%;padding:8px;margin:3px 0;border:1px solid 
 #msg{position:fixed;left:50%;top:42%;transform:translate(-50%,-50%);z-index:100;background:rgba(0,0,0,.78);color:#fff;font-size:20px;font-weight:700;padding:18px 22px;border-radius:14px;text-align:center;display:none;width:80%}
 </style></head><body>
 
-<div class="v" id="v-map">
+<div class="v" id="v-det">
+ <button onclick="history.back()" style="margin:0 0 8px">← 뒤로</button>
  <div id="map"></div>
  <div id="info"></div>
+ <div id="dact"></div>
 </div>
 
 <div class="v on" id="v-rec">
@@ -68,7 +70,6 @@ input:not([type=checkbox]){width:100%;padding:8px;margin:3px 0;border:1px solid 
 
 <nav>
  <button data-t="rec" class="on" onclick="tab('rec')">기록</button>
- <button data-t="map" onclick="tab('map')">지도</button>
  <button data-t="st" onclick="tab('st')">통계</button>
  <button data-t="fam" onclick="tab('fam')">가족</button>
 </nav>
@@ -143,7 +144,7 @@ $('#f').onchange=async e=>{
   before[r.date]??=dayKm(r.date);R.push(r);add.push(r)}
  e.target.value='';
  if(!add.length){alert('새로 추가된 기록이 없어요 (중복이거나 GPX 형식이 아니에요)');return}
- save();render();draw(add);up(add);
+ save();render();up(add);
  if(Object.keys(before).some(d=>before[d]<G&&dayKm(d)>=G))boom()};
 
 /* 기록 목록 */
@@ -156,13 +157,17 @@ function list(){
  const g={};[...R].sort((a,b)=>b.ts-a.ts).forEach(r=>(g[r.date.slice(0,7)]??=[]).push(r));
  $('#list').innerHTML=Object.entries(g).map(([k,a])=>`<div class="mh"><b>${k.replace('-','/')}</b><small>${sum(a).toFixed(1)} km · ${hm(a.reduce((s,r)=>s+r.dur,0))} · ${a.length}회</small></div>`
  +a.map(r=>`<div class="it"><input type="checkbox" data-i="${r.id}" ${sel.has(r.id)?'checked':''}>${thumb(r)}
- <span onclick="show('${r.id}')"><small>${r.date}</small><br><b style="font-size:16px">${r.dist.toFixed(2)}</b> km · ${hms(r.dur)} · ${spd(r)} km/h<br><small>${r.note||''}</small></span>
- <button onclick="note('${r.id}')">메모</button><button onclick="del('${r.id}')">삭제</button></div>`).join('')).join('')||'기록이 없어요'}
+ <span onclick="show('${r.id}')"><small>${r.date}</small><br><b style="font-size:16px">${r.dist.toFixed(2)}</b> km · ${hms(r.dur)} · ${spd(r)} km/h<br><small>${r.note||''}</small></span></div>`).join('')).join('')||'기록이 없어요'}
 $('#list').onchange=e=>{const i=e.target.dataset.i;e.target.checked?sel.add(i):sel.delete(i)};
-const show=id=>{draw([R.find(r=>r.id==id)]);tab('map')};
-const ov=()=>{const rs=R.filter(r=>sel.has(r.id));if(rs.length){draw(rs);tab('map')}else alert('겹쳐볼 기록을 체크하세요')};
-function note(id){const r=R.find(x=>x.id==id),n=prompt('메모',r.note||'');if(n!=null){r.note=n;save();list();up([r])}}
-function del(id){if(!confirm('이 기록을 삭제할까요?'))return;R=R.filter(r=>r.id!=id);sel.delete(id);save();render();rm(id)}
+let CUR=[];
+function openRs(rs,own){CUR=own?rs:[];tab('det');if(map)map.invalidateSize();draw(rs);act()}
+function act(){$('#dact').innerHTML=CUR.map(r=>`<div class="card"><b>${r.date}</b> ${r.dist.toFixed(2)} km<br><small>${r.note||'메모 없음'}</small><br>
+ <button onclick="note('${r.id}')">메모</button><button style="background:#ef4444" onclick="del('${r.id}')">삭제</button></div>`).join('')}
+const show=id=>openRs([R.find(r=>r.id==id)],true);
+const ov=()=>{const rs=R.filter(r=>sel.has(r.id));if(rs.length)openRs(rs,true);else alert('겹쳐볼 기록을 체크하세요')};
+function note(id){const r=R.find(x=>x.id==id),n=prompt('메모',r.note||'');if(n!=null){r.note=n;save();list();act();up([r])}}
+function del(id){if(!confirm('이 기록을 삭제할까요?'))return;R=R.filter(r=>r.id!=id);CUR=CUR.filter(r=>r.id!=id);sel.delete(id);save();render();rm(id);
+ if(CUR.length){draw(CUR);act()}else history.back()}
 
 /* 통계: 기간 탭 그래프, 통계 카드, 이정표, 달력 */
 let P='월',wo=0;
@@ -170,7 +175,7 @@ const sum=a=>a.reduce((s,r)=>s+r.dist,0),hms=s=>`${pad(Math.floor(s/3600))}:${pa
 const mv=d=>{M=new Date(M.getFullYear(),M.getMonth()+d,1);stats()};
 const nv=d=>{if(P=='주간'){wo+=d;stats()}else mv(P=='년'?d*12:d)};
 const sp=p=>{P=p;stats()};
-const dayShow=d=>{const rs=R.filter(r=>r.date==d);if(rs.length){draw(rs);tab('map')}};
+const dayShow=d=>{const rs=R.filter(r=>r.date==d);if(rs.length)openRs(rs,true)};
 function ser(){
  const y=M.getFullYear(),m=M.getMonth(),mk=`${y}-${pad(m+1)}`;
  if(P=='주간'){const t=new Date(),s0=new Date(t.getFullYear(),t.getMonth(),t.getDate()-(t.getDay()+6)%7+wo*7),ds=[...Array(7)].map((_,i)=>ymd(new Date(s0.getFullYear(),s0.getMonth(),s0.getDate()+i)));
@@ -249,13 +254,13 @@ async function fam(){
    return`<div class="card"><b>${nm}</b> · 오늘 <b>${k.toFixed(2)} km</b>${k>=G?' ✅':''}
    ${a.slice(0,10).map(r=>`<div class="it" onclick="fshow('${nm}','${r.id}')"><span>${r.date} ${r.dist.toFixed(2)}km · ${hm(r.dur)} · ${spd(r)}km/h</span></div>`).join('')}</div>`}).join('')||'공유된 기록이 없어요'
  }catch(e){o.textContent='불러오기 실패: 데이터베이스 주소와 규칙을 확인하세요'}}
-function fshow(nm,id){const r=Object.values(FD[nm]).find(x=>x.id==id);if(r){r.pts=Object.values(r.pts);draw([r]);tab('map')}}
+function fshow(nm,id){const r=Object.values(FD[nm]).find(x=>x.id==id);if(r){r.pts=Object.values(r.pts);openRs([r],false)}}
 
 /* 탭 */
 function tab(t,pop){
  document.querySelectorAll('.v').forEach(v=>v.classList.toggle('on',v.id=='v-'+t));
- document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t==t));
- if(t=='map'&&map)setTimeout(()=>{map.invalidateSize();if(LB&&LB.length)map.fitBounds(LB,{padding:[20,20]})},50);
+ document.querySelectorAll('nav button').forEach(b=>t=='det'||b.classList.toggle('on',b.dataset.t==t));
+ if(t=='det'&&map)setTimeout(()=>{map.invalidateSize();if(LB&&LB.length)map.fitBounds(LB,{padding:[20,20]})},50);
  if(t=='fam')fam();
  if(!pop&&!(history.state&&history.state.t==t))history.pushState({t},'')}
 addEventListener('popstate',e=>tab(e.state&&e.state.t||'rec',1));
