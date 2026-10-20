@@ -113,7 +113,7 @@ function draw(rs){
  if(!map){info(rs);return}
  lg.clearLayers();const b=[],S=[];
  rs.forEach(r=>{const p=r.pts;
-  for(let i=1;i<p.length;i++){const dt=(p[i][2]-p[i-1][2])/3600;S.push({a:p[i-1],b:p[i],v:dt>0?hv(p[i-1],p[i])/dt:null})}
+  for(let i=1;i<p.length;i++){if(p[i][4])continue;const dt=(p[i][2]-p[i-1][2])/3600;S.push({a:p[i-1],b:p[i],v:dt>0?hv(p[i-1],p[i])/dt:null})}
   p.forEach(x=>b.push([x[0],x[1]]))});
  const vs=S.map(x=>x.v).filter(v=>v!=null).sort((x,y)=>x-y);
  let lo=vs.length?vs[Math.floor(vs.length*.05)]:1,hi=vs.length?vs[Math.floor(vs.length*.95)]:6;
@@ -130,16 +130,18 @@ function info(rs){
 
 /* GPX 읽기 */
 function parse(txt){
- const x=new DOMParser().parseFromString(txt,'text/xml');
- const P=[...x.querySelectorAll('trkpt')].map(n=>[+n.getAttribute('lat'),+n.getAttribute('lon'),Date.parse(n.querySelector('time')?.textContent)/1000||0,+n.querySelector('ele')?.textContent||0]);
+ const x=new DOMParser().parseFromString(txt,'text/xml');let g=-1,lp=null;
+ const P=[...x.querySelectorAll('trkpt')].map(n=>{if(n.parentNode!==lp){g++;lp=n.parentNode}
+  return[+n.getAttribute('lat'),+n.getAttribute('lon'),Date.parse(n.querySelector('time')?.textContent)/1000||0,+n.querySelector('ele')?.textContent||0,g,0]});
  if(P.length<2)return null;
  let dist=0,dur=0,ele=0,ref=P[0][3];
  for(let i=1;i<P.length;i++){
-  dist+=hv(P[i-1],P[i]);
-  const dt=P[i][2]-P[i-1][2];if(dt>0&&dt<=120)dur+=dt; // 2분 넘는 정지 구간 제외
-  const e=P[i][3];if(e-ref>=3){ele+=e-ref;ref=e}else if(e<ref)ref=e}
+  const dt=P[i][2]-P[i-1][2],e=P[i][3];
+  if(P[i][4]!=P[i-1][4]||dt>120){P[i][5]=1;ref=e;continue} // 일시정지·차량 이동 등 끊긴 구간은 거리·시간에서 제외
+  dist+=hv(P[i-1],P[i]);if(dt>0)dur+=dt;
+  if(e-ref>=3){ele+=e-ref;ref=e}else if(e<ref)ref=e}
  const k=Math.ceil(P.length/700);
- const pts=P.filter((_,i)=>i%k==0||i==P.length-1).map(p=>[+p[0].toFixed(5),+p[1].toFixed(5),p[2],Math.round(p[3])]);
+ const pts=P.filter((p,i)=>i%k==0||i==P.length-1||p[5]||(P[i+1]&&P[i+1][5])).map(p=>[+p[0].toFixed(5),+p[1].toFixed(5),p[2],Math.round(p[3]),p[5]]);
  const ts=P[0][2]||Math.floor(Date.now()/1000);
  return{id:ts+'_'+Math.round(dist*100),ts,date:ymd(new Date(ts*1000)),dist,dur,ele,note:'',pts}}
 
@@ -148,7 +150,10 @@ $('#f').onchange=async e=>{
  for(const f of fs){
   const r=parse(await f.text());
   if(!r||R.some(x=>x.id==r.id)||add.some(x=>x.id==r.id))continue;
-  before[r.date]??=dayKm(r.date);R.push(r);add.push(r)}
+  before[r.date]??=dayKm(r.date);
+  const o=R.findIndex(x=>!x.manual&&x.ts==r.ts);
+  if(o>=0){r.note=R[o].note;rm(R[o].id);R.splice(o,1)} // 같은 운동을 다시 불러오면 새 계산으로 교체
+  R.push(r);add.push(r)}
  e.target.value='';
  if(!add.length){alert('새로 추가된 기록이 없어요 (중복이거나 GPX 형식이 아니에요)');return}
  save();render();up(add);
@@ -158,8 +163,10 @@ $('#f').onchange=async e=>{
 function thumb(r){
  if(!r.pts||!r.pts.length)return`<svg width="56" height="56" style="background:#eef3f2;border-radius:8px"><text x="28" y="38" text-anchor="middle" font-size="26">${r.indoor?'🏠':'✍️'}</text></svg>`;
  const p=r.pts,la=p.map(x=>x[0]),lo=p.map(x=>x[1]),a=Math.min(...la),b=Math.max(...la),c=Math.min(...lo),d=Math.max(...lo),k=Math.cos(a*Math.PI/180),z=Math.max(b-a,(d-c)*k)||1e-4,q=Math.ceil(p.length/60);
- const pt=p.filter((_,i)=>i%q==0).map(x=>`${((x[1]-c)*k/z*48+4).toFixed(1)},${((b-x[0])/z*48+4).toFixed(1)}`).join(' ');
- return`<svg width="56" height="56" style="background:#eef3f2;border-radius:8px"><polyline points="${pt}" fill="none" stroke="#ff4a2a" stroke-width="2" stroke-linejoin="round"/></svg>`}
+ const runs=[];let cur=null;
+ p.forEach((x,i)=>{if(x[4]||!cur){cur=[];runs.push(cur)}
+  if(i%q==0||x[4]||i==p.length-1||(p[i+1]&&p[i+1][4]))cur.push(`${((x[1]-c)*k/z*48+4).toFixed(1)},${((b-x[0])/z*48+4).toFixed(1)}`)});
+ return`<svg width="56" height="56" style="background:#eef3f2;border-radius:8px">${runs.map(u=>`<polyline points="${u.join(' ')}" fill="none" stroke="#ff4a2a" stroke-width="2" stroke-linejoin="round"/>`).join('')}</svg>`}
 function list(){
  $('#tot').innerHTML=`누적 거리<br><b style="font-size:28px">${sum(R).toFixed(2)}</b> km`;
  const g={};[...R].sort((a,b)=>b.ts-a.ts).forEach(r=>(g[r.date.slice(0,7)]??=[]).push(r));
