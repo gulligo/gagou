@@ -45,8 +45,13 @@ input:not([type=checkbox]){width:100%;padding:8px;margin:3px 0;border:1px solid 
 
 <div class="v on" id="v-rec">
 <label class="btn">GPX 불러오기<input type="file" id="f" multiple hidden></label>
+ <button onclick="mf()" style="background:#7c3aed">직접 입력</button>
   <div style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:4px"><span id="lo">느림</span>
    <div style="flex:1;height:8px;border-radius:4px;background:linear-gradient(90deg,hsl(240,100%,45%),hsl(180,100%,45%),hsl(120,100%,40%),hsl(60,100%,45%),hsl(0,100%,45%))"></div><span id="hi">빠름</span></div>
+<div class="card" id="mform" style="display:none;margin-top:8px"><b>직접 입력 (실내 걷기 등)</b>
+  <input type="date" id="md"><input type="number" step="0.01" id="mk" placeholder="거리 (km)"><input type="number" id="mm" placeholder="시간 (분)"><input id="mn" placeholder="메모 (선택)">
+  <label><input type="checkbox" id="mi"> 실내 걷기</label><br>
+  <button onclick="ma()">저장</button><button onclick="mf()" style="background:#8a9a98">취소</button></div>
  <div style="height:6px"></div>
  <button onclick="ov()">선택한 경로 겹쳐보기</button>
  <button onclick="bak()">백업 저장</button>
@@ -149,6 +154,7 @@ $('#f').onchange=async e=>{
 
 /* 기록 목록 */
 function thumb(r){
+ if(!r.pts||!r.pts.length)return`<svg width="56" height="56" style="background:#eef3f2;border-radius:8px"><text x="28" y="38" text-anchor="middle" font-size="26">${r.indoor?'🏠':'✍️'}</text></svg>`;
  const p=r.pts,la=p.map(x=>x[0]),lo=p.map(x=>x[1]),a=Math.min(...la),b=Math.max(...la),c=Math.min(...lo),d=Math.max(...lo),k=Math.cos(a*Math.PI/180),z=Math.max(b-a,(d-c)*k)||1e-4,q=Math.ceil(p.length/60);
  const pt=p.filter((_,i)=>i%q==0).map(x=>`${((x[1]-c)*k/z*48+4).toFixed(1)},${((b-x[0])/z*48+4).toFixed(1)}`).join(' ');
  return`<svg width="56" height="56" style="background:#eef3f2;border-radius:8px"><polyline points="${pt}" fill="none" stroke="#ff4a2a" stroke-width="2" stroke-linejoin="round"/></svg>`}
@@ -157,11 +163,20 @@ function list(){
  const g={};[...R].sort((a,b)=>b.ts-a.ts).forEach(r=>(g[r.date.slice(0,7)]??=[]).push(r));
  $('#list').innerHTML=Object.entries(g).map(([k,a])=>`<div class="mh"><b>${k.replace('-','/')}</b><small>${sum(a).toFixed(1)} km · ${hm(a.reduce((s,r)=>s+r.dur,0))} · ${a.length}회</small></div>`
  +a.map(r=>`<div class="it"><input type="checkbox" data-i="${r.id}" ${sel.has(r.id)?'checked':''}>${thumb(r)}
- <span onclick="show('${r.id}')"><small>${r.date}</small><br><b style="font-size:16px">${r.dist.toFixed(2)}</b> km · ${hms(r.dur)} · ${spd(r)} km/h<br><small>${r.note||''}</small></span></div>`).join('')).join('')||'기록이 없어요'}
+ <span onclick="show('${r.id}')"><small>${r.date}${r.manual?(r.indoor?' · 실내':' · 직접입력'):''}</small><br><b style="font-size:16px">${r.dist.toFixed(2)}</b> km · ${hms(r.dur)} · ${spd(r)} km/h<br><small>${r.note||''}</small></span></div>`).join('')).join('')||'기록이 없어요'}
 $('#list').onchange=e=>{const i=e.target.dataset.i;e.target.checked?sel.add(i):sel.delete(i)};
+const mf=()=>{const f=$('#mform');f.style.display=f.style.display=='none'?'block':'none';$('#md').value=ymd(new Date())};
+function ma(){
+ const d=$('#md').value,k=+$('#mk').value,m=+$('#mm').value||0;
+ if(!d||!(k>0)){alert('날짜와 거리를 입력하세요');return}
+ const ts=d==ymd(new Date())?Math.floor(Date.now()/1000):Math.floor(new Date(d+'T12:00:00')/1000);
+ const r={id:'m'+Date.now(),ts,date:d,dist:k,dur:m*60,ele:0,note:$('#mn').value.trim(),pts:[],manual:1,indoor:$('#mi').checked?1:0};
+ const before=dayKm(d);R.push(r);save();render();up([r]);
+ ['#mk','#mm','#mn'].forEach(x=>{$(x).value=''});$('#mi').checked=false;$('#mform').style.display='none';
+ if(before<G&&dayKm(d)>=G)boom()}
 let CUR=[];
-function openRs(rs,own){CUR=own?rs:[];tab('det');if(map)map.invalidateSize();draw(rs);act()}
-function act(){$('#dact').innerHTML=CUR.map(r=>`<div class="card"><b>${r.date}</b> ${r.dist.toFixed(2)} km<br><small>${r.note||'메모 없음'}</small><br>
+function openRs(rs,own){CUR=own?rs:[];tab('det');const hp=rs.some(r=>r.pts&&r.pts.length);$('#map').style.display=hp?'':'none';if(map&&hp)map.invalidateSize();draw(rs);act()}
+function act(){$('#dact').innerHTML=CUR.map(r=>`<div class="card"><b>${r.date}</b> ${r.dist.toFixed(2)} km${r.manual?(r.indoor?' · 실내 걷기':' · 직접 입력'):''}<br><small>${r.note||'메모 없음'}</small><br>
  <button onclick="note('${r.id}')">메모</button><button style="background:#ef4444" onclick="del('${r.id}')">삭제</button></div>`).join('')}
 const show=id=>openRs([R.find(r=>r.id==id)],true);
 const ov=()=>{const rs=R.filter(r=>sel.has(r.id));if(rs.length)openRs(rs,true);else alert('겹쳐볼 기록을 체크하세요')};
@@ -193,7 +208,8 @@ function stats(){
  if(!S.has(ymd(dd)))dd.setDate(dd.getDate()-1);
  while(S.has(ymd(dd))){cur++;dd.setDate(dd.getDate()-1)}
  let best=0,run=0;[...S].sort().forEach((s,i,a)=>{run=i&&(new Date(s)-new Date(a[i-1]))/864e5==1?run+1:1;best=Math.max(best,run)});
- const L1=R.reduce((a,r)=>!a||r.dist>a.dist?r:a,null);
+ const DS={};R.forEach(r=>{const o=DS[r.date]??={d:0,t:0};o.d+=r.dist;o.t+=r.dur});
+ const L1=Object.values(DS).reduce((a,o)=>!a||o.d>a.d?o:a,null);
  const F1=R.filter(r=>r.dur>0).reduce((a,r)=>!a||r.dist/r.dur>a.dist/a.dur?r:a,null);
  $('#st').innerHTML=`<div class="card"><div class="tb">${['주간','월','년','전체'].map(p=>`<button class="${p==P?'':'off'}" onclick="sp('${p}')">${p}</button>`).join('')}</div>
  ${P=='전체'?'':`<div style="display:flex;justify-content:space-between;align-items:center"><button onclick="nv(-1)">◀</button><b>${S0.t}</b><button onclick="nv(1)">▶</button></div>`}
@@ -206,7 +222,7 @@ function stats(){
  <div>누적 상승<b>${Math.round(e)} m</b></div><div>평균 속도<b>${t?(d/t*3600).toFixed(1):'0.0'} km/h</b></div>
  <div>연속 기록<b>${cur}일</b><small>(최장 ${best}일)</small></div></div>
  <div class="mh"><b>최고 기록</b></div>
- <div class="g"><div>최장 거리<b>${L1?L1.dist.toFixed(2):0} km</b><small>(${L1?hm(L1.dur):'-'})</small></div><div>최고 평균 속도<b>${F1?spd(F1):'0.0'} km/h</b></div></div>
+ <div class="g"><div>최장 거리<b>${L1?L1.d.toFixed(2):0} km</b><small>(${L1?hm(L1.t):'-'})</small></div><div>최고 평균 속도<b>${F1?spd(F1):'0.0'} km/h</b></div></div>
  <div class="mh"><b>이정표</b></div>
  <div class="card">${[3,5,10].map(x=>`<div class="ms"><span>${x}KM 이상 걸은 횟수</span><b>${rs.filter(r=>r.dist>=x).length}</b></div>`).join('')}</div>
  <div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><button onclick="mv(-1)">◀</button><b>${y}년 ${m+1}월</b><button onclick="mv(1)">▶</button></div>
@@ -254,7 +270,7 @@ async function fam(){
    return`<div class="card"><b>${nm}</b> · 오늘 <b>${k.toFixed(2)} km</b>${k>=G?' ✅':''}
    ${a.slice(0,10).map(r=>`<div class="it" onclick="fshow('${nm}','${r.id}')"><span>${r.date} ${r.dist.toFixed(2)}km · ${hm(r.dur)} · ${spd(r)}km/h</span></div>`).join('')}</div>`}).join('')||'공유된 기록이 없어요'
  }catch(e){o.textContent='불러오기 실패: 데이터베이스 주소와 규칙을 확인하세요'}}
-function fshow(nm,id){const r=Object.values(FD[nm]).find(x=>x.id==id);if(r){r.pts=Object.values(r.pts);openRs([r],false)}}
+function fshow(nm,id){const r=Object.values(FD[nm]).find(x=>x.id==id);if(r){r.pts=r.pts?Object.values(r.pts):[];openRs([r],false)}}
 
 /* 탭 */
 function tab(t,pop){
