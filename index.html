@@ -24,6 +24,7 @@ nav .on{color:#0f766e;font-weight:700}
 .cal i{font-style:normal;color:#7b8c8a;font-size:12px}
 .d{position:relative;padding:10px 0;font-size:15px}
 .d u{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:36px;color:rgba(255,120,160,.38);text-decoration:none;pointer-events:none}
+.d u.mx{font-size:48px;color:rgba(239,68,68,.32)}
 .bars{flex:1;display:flex;align-items:flex-end;height:120px;gap:1px;border-bottom:1px solid #b9c6c4;background:linear-gradient(#e3eae9,#e3eae9) 0 0/100% 1px no-repeat,linear-gradient(#e3eae9,#e3eae9) 0 50%/100% 1px no-repeat}
 .ya{display:flex;flex-direction:column;justify-content:space-between;height:120px;width:28px;padding-right:4px;text-align:right;font-size:11px;color:#7b8c8a}
 .xl{display:flex;margin-left:28px;font-size:11px;color:#7b8c8a}.xl span{flex:1;text-align:center;white-space:nowrap}
@@ -45,7 +46,8 @@ input:not([type=checkbox]){width:100%;padding:8px;margin:3px 0;border:1px solid 
 
 <div class="v on" id="v-rec">
 <label class="btn">GPX 불러오기<input type="file" id="f" multiple hidden></label>
- <button onclick="mf()" style="background:#7c3aed">직접 입력</button>
+ <button onclick="mf()">직접 입력</button>
+ <button onclick="ov()">선택한 경로 겹쳐보기</button>
   <div style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:4px"><span id="lo">느림</span>
    <div style="flex:1;height:8px;border-radius:4px;background:linear-gradient(90deg,hsl(240,100%,45%),hsl(180,100%,45%),hsl(120,100%,40%),hsl(60,100%,45%),hsl(0,100%,45%))"></div><span id="hi">빠름</span></div>
 <div class="card" id="mform" style="display:none;margin-top:8px"><b>직접 입력 (실내 걷기 등)</b>
@@ -53,14 +55,12 @@ input:not([type=checkbox]){width:100%;padding:8px;margin:3px 0;border:1px solid 
   <label><input type="checkbox" id="mi"> 실내 걷기</label><br>
   <button onclick="ma()">저장</button><button onclick="mf()" style="background:#8a9a98">취소</button></div>
  <div style="height:6px"></div>
- <button onclick="ov()">선택한 경로 겹쳐보기</button>
- <button onclick="bak()">백업 저장</button>
- <label class="btn">백업 복원<input type="file" id="rf" hidden></label>
  <div class="card" id="tot" style="margin-top:8px"></div>
  <div id="list"></div>
 </div>
 
-<div class="v" id="v-st"><div id="st"></div></div>
+<div class="v" id="v-st"><div id="st"></div>
+ <div style="margin-top:6px"><button onclick="bak()">백업 저장</button><label class="btn">백업 복원<input type="file" id="rf" hidden></label></div></div>
 
 <div class="v" id="v-fam">
  <div class="card"><b>가족 공유 설정</b>
@@ -91,6 +91,8 @@ let M=new Date();M=new Date(M.getFullYear(),M.getMonth(),1);
 const save=()=>{LS.walk_wt=JSON.stringify(R)};
 const pad=n=>String(n).padStart(2,'0');
 const ymd=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const tm=r=>{if(r.manual)return'';const d=new Date(r.ts*1000);return' '+pad(d.getHours())+':'+pad(d.getMinutes())};
+const HK=3; // 달력 하트가 나오는 하루 최소 거리(km)
 const hm=s=>{const h=Math.floor(s/3600),m=Math.floor(s%3600/60);return(h?h+'시간 ':'')+m+'분'};
 const spd=r=>r.dur?(r.dist/r.dur*3600).toFixed(1):'0.0';
 const dayKm=d=>R.filter(r=>r.date==d).reduce((s,r)=>s+r.dist,0);
@@ -163,7 +165,7 @@ function list(){
  const g={};[...R].sort((a,b)=>b.ts-a.ts).forEach(r=>(g[r.date.slice(0,7)]??=[]).push(r));
  $('#list').innerHTML=Object.entries(g).map(([k,a])=>`<div class="mh"><b>${k.replace('-','/')}</b><small>${sum(a).toFixed(1)} km · ${hm(a.reduce((s,r)=>s+r.dur,0))} · ${a.length}회</small></div>`
  +a.map(r=>`<div class="it"><input type="checkbox" data-i="${r.id}" ${sel.has(r.id)?'checked':''}>${thumb(r)}
- <span onclick="show('${r.id}')"><small>${r.date}${r.manual?(r.indoor?' · 실내':' · 직접입력'):''}</small><br><b style="font-size:16px">${r.dist.toFixed(2)}</b> km · ${hms(r.dur)} · ${spd(r)} km/h<br><small>${r.note||''}</small></span></div>`).join('')).join('')||'기록이 없어요'}
+ <span onclick="show('${r.id}')"><span style="font-size:13px;color:#5b6b69">${r.date}${tm(r)}${r.manual?(r.indoor?' · 실내':' · 직접입력'):''}</span><br><b style="font-size:16px">${r.dist.toFixed(2)}</b> km · ${hms(r.dur)} · ${spd(r)} km/h<br><small>${r.note||''}</small></span></div>`).join('')).join('')||'기록이 없어요'}
 $('#list').onchange=e=>{const i=e.target.dataset.i;e.target.checked?sel.add(i):sel.delete(i)};
 const mf=()=>{const f=$('#mform');f.style.display=f.style.display=='none'?'block':'none';$('#md').value=ymd(new Date())};
 function ma(){
@@ -176,7 +178,7 @@ function ma(){
  if(before<G&&dayKm(d)>=G)boom()}
 let CUR=[];
 function openRs(rs,own){CUR=own?rs:[];tab('det');const hp=rs.some(r=>r.pts&&r.pts.length);$('#map').style.display=hp?'':'none';if(map&&hp)map.invalidateSize();draw(rs);act()}
-function act(){$('#dact').innerHTML=CUR.map(r=>`<div class="card"><b>${r.date}</b> ${r.dist.toFixed(2)} km${r.manual?(r.indoor?' · 실내 걷기':' · 직접 입력'):''}<br><small>${r.note||'메모 없음'}</small><br>
+function act(){$('#dact').innerHTML=CUR.map(r=>`<div class="card"><b>${r.date}${tm(r)}</b> ${r.dist.toFixed(2)} km${r.manual?(r.indoor?' · 실내 걷기':' · 직접 입력'):''}<br><small>${r.note||'메모 없음'}</small><br>
  <button onclick="note('${r.id}')">메모</button><button style="background:#ef4444" onclick="del('${r.id}')">삭제</button></div>`).join('')}
 const show=id=>openRs([R.find(r=>r.id==id)],true);
 const ov=()=>{const rs=R.filter(r=>sel.has(r.id));if(rs.length)openRs(rs,true);else alert('겹쳐볼 기록을 체크하세요')};
@@ -204,6 +206,7 @@ function stats(){
  const S0=ser(),rs=R.filter(S0.f),d=sum(rs),t=rs.reduce((s,r)=>s+r.dur,0),e=rs.reduce((s,r)=>s+r.ele,0);
  const raw=Math.max(G,...S0.V),st=raw>20?10:raw>5?5:1,top=Math.max(st,Math.ceil(raw/st)*st);
  const y=M.getFullYear(),m=M.getMonth(),n=new Date(y,m+1,0).getDate(),f0=new Date(y,m,1).getDay(),dk=i=>`${y}-${pad(m+1)}-${pad(i)}`;
+ const cm=[...Array(n)].map((_,i)=>dayKm(dk(i+1))),mxd=Math.max(...cm);
  const S=new Set(R.map(r=>r.date));let cur=0,dd=new Date();
  if(!S.has(ymd(dd)))dd.setDate(dd.getDate()-1);
  while(S.has(ymd(dd))){cur++;dd.setDate(dd.getDate()-1)}
@@ -226,7 +229,7 @@ function stats(){
  <div class="mh"><b>이정표</b></div>
  <div class="card">${[3,5,10].map(x=>`<div class="ms"><span>${x}KM 이상 걸은 횟수</span><b>${rs.filter(r=>r.dist>=x).length}</b></div>`).join('')}</div>
  <div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><button onclick="mv(-1)">◀</button><b>${y}년 ${m+1}월</b><button onclick="mv(1)">▶</button></div>
- <div class="cal">${[...'일월화수목금토'].map(x=>`<i>${x}</i>`).join('')}${'<div></div>'.repeat(f0)}${[...Array(n)].map((_,i)=>`<div class="d" onclick="dayShow('${dk(i+1)}')">${dayKm(dk(i+1))?'<u>♥</u>':''}${i+1}</div>`).join('')}</div></div>`}
+ <div class="cal">${[...'일월화수목금토'].map(x=>`<i>${x}</i>`).join('')}${'<div></div>'.repeat(f0)}${[...Array(n)].map((_,i)=>`<div class="d" onclick="dayShow('${dk(i+1)}')">${cm[i]>=HK?`<u class="${cm[i]==mxd?'mx':''}">♥</u>`:''}${i+1}</div>`).join('')}</div></div>`}
 
 /* 폭죽 + 성공 멘트 */
 function boom(){
